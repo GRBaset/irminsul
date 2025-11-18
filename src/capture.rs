@@ -4,6 +4,7 @@ mod pcap_backend;
 mod pktmon_backend;
 
 use std::fmt::{Debug, Display};
+use std::path::PathBuf;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -18,6 +19,7 @@ pub enum CaptureError {
     Capture { has_captured: bool, error: Error },
     CaptureClosed,
     ChannelClosed,
+    SavefileError(Error),
 }
 
 impl Display for CaptureError {
@@ -34,6 +36,7 @@ impl Display for CaptureError {
             ),
             CaptureError::CaptureClosed => write!(f, "Capture closed"),
             CaptureError::ChannelClosed => write!(f, "Channel closed"),
+            CaptureError::SavefileError(e) => write!(f, "Savefile open error: {}", e),
         }
     }
 }
@@ -53,18 +56,33 @@ pub enum BackendType {
     Pcap,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaptureSource {
+    Device(Option<PathBuf>),
+    File(PathBuf),
+}
+
 #[cfg(windows)]
 pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pktmon;
 #[cfg(not(windows))]
 pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pcap;
 
-pub fn create_capture(backend: BackendType) -> Result<Box<dyn CaptureBackend>> {
+pub fn create_capture(
+    backend: BackendType,
+    capture_source: CaptureSource,
+) -> Result<Box<dyn CaptureBackend>> {
     match backend {
         #[cfg(windows)]
-        BackendType::Pktmon => Ok(Box::new(pktmon_backend::PktmonBackend::new()?)),
+        BackendType::Pktmon => match capture_source {
+            Device(None) => Ok(Box::new(pktmon_backend::PktmonBackend::new()?)),
+            _ => Err(CaptureError::Capture {
+                has_captured: false,
+                error: anyhow::anyhow!("Savefiles are only supported for the pcap backend"),
+            }),
+        },
 
         #[cfg(feature = "pcap")]
-        BackendType::Pcap => Ok(Box::new(pcap_backend::PcapBackend::new()?)),
+        BackendType::Pcap => Ok(Box::new(pcap_backend::PcapBackend::new(capture_source)?)),
         #[cfg(not(feature = "pcap"))]
         BackendType::Pcap => Err(CaptureError::Capture {
             has_captured: false,

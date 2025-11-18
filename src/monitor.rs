@@ -14,7 +14,7 @@ use chrono::prelude::*;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-use crate::capture::{BackendType, create_capture};
+use crate::capture::{self, BackendType, CaptureSource, create_capture};
 use crate::player_data::PlayerData;
 use crate::{APP_ID, AppState, ConfirmationType, DataUpdated, Message, State};
 
@@ -57,6 +57,7 @@ pub struct Monitor {
     packet_tx: mpsc::UnboundedSender<Vec<u8>>,
     packet_rx: mpsc::UnboundedReceiver<Vec<u8>>,
     capture_backend: BackendType,
+    capture_source: CaptureSource,
 }
 
 impl Monitor {
@@ -65,6 +66,7 @@ impl Monitor {
         mut ui_message_rx: mpsc::UnboundedReceiver<Message>,
         log_packet_rx: watch::Receiver<bool>,
         capture_backend: BackendType,
+        capture_source: CaptureSource,
     ) -> Result<Self> {
         let mut app_state = AppStateManager::new(state_tx.borrow().clone(), state_tx.clone());
         let game_data = get_database(&mut app_state, &mut ui_message_rx).await?;
@@ -83,6 +85,7 @@ impl Monitor {
             packet_tx,
             packet_rx,
             capture_backend,
+            capture_source,
         })
     }
 
@@ -111,6 +114,7 @@ impl Monitor {
                     cancel_token.clone(),
                     self.packet_tx.clone(),
                     self.capture_backend,
+                    self.capture_source.clone(),
                 ));
                 self.capture_cancel_token = Some(cancel_token);
                 self.app_state.update_capturing_state(true);
@@ -241,8 +245,9 @@ async fn capture_task(
     cancel_token: CancellationToken,
     packet_tx: mpsc::UnboundedSender<Vec<u8>>,
     backend: BackendType,
+    capture_source: capture::CaptureSource,
 ) -> Result<()> {
-    let mut capture = create_capture(backend)
+    let mut capture = create_capture(backend, capture_source)
         .map_err(|e| anyhow!("Error creating packet capture using {:?}: {e}", backend))?;
     tracing::info!("starting capture");
     loop {
@@ -252,6 +257,10 @@ async fn capture_task(
         );
         let packet = match packet {
             Ok(packet) => packet,
+            Err(capture::CaptureError::CaptureClosed) => {
+                tracing::info!("Capture closed.");
+                break;
+            }
             Err(e) => {
                 tracing::error!("Error receiving packet: {e}");
                 continue;
