@@ -5,6 +5,7 @@ mod pcap_backend;
 mod pktmon_backend;
 
 use std::fmt::{Debug, Display};
+use std::path::PathBuf;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -19,6 +20,7 @@ pub enum CaptureError {
     Capture { has_captured: bool, error: Error },
     CaptureClosed,
     ChannelClosed,
+    SavefileError(Error),
 }
 
 impl Display for CaptureError {
@@ -35,6 +37,7 @@ impl Display for CaptureError {
             ),
             CaptureError::CaptureClosed => write!(f, "Capture closed"),
             CaptureError::ChannelClosed => write!(f, "Channel closed"),
+            CaptureError::SavefileError(e) => write!(f, "Savefile open error: {}", e),
         }
     }
 }
@@ -53,39 +56,48 @@ pub enum BackendType {
     Pcap,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CaptureSource {
+    Device(Option<PathBuf>),
+    File(PathBuf),
+}
+
 #[cfg(windows)]
 pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pktmon;
 #[cfg(not(windows))]
 pub const DEFAULT_CAPTURE_BACKEND_TYPE: BackendType = BackendType::Pcap;
 
-pub fn create_capture(backend: BackendType) -> Result<Box<dyn CaptureBackend>> {
+pub fn create_capture(
+    backend: BackendType,
+    capture_source: CaptureSource,
+) -> Result<Box<dyn CaptureBackend>> {
     match backend {
-        BackendType::Pktmon => {
-            #[cfg(windows)]
-            {
-                Ok(Box::new(pktmon_backend::PktmonBackend::new()?))
-            }
-            #[cfg(not(windows))]
-            {
-                Err(CaptureError::Capture {
-                    has_captured: false,
-                    error: anyhow::anyhow!("Pktmon capture not supported on this operating system"),
-                })
-            }
-        }
+        #[cfg(windows)]
+        BackendType::Pktmon => match capture_source {
+            CaptureSource::Device(None) => Ok(Box::new(pktmon_backend::PktmonBackend::new()?)),
+            _ => Err(CaptureError::Capture {
+                has_captured: false,
+                error: anyhow::anyhow!("Savefiles are only supported for the pcap backend"),
+            }),
+        },
 
-        BackendType::Pcap => {
-            #[cfg(feature = "pcap")]
-            {
-                Ok(Box::new(pcap_backend::PcapBackend::new()?))
-            }
-            #[cfg(not(feature = "pcap"))]
-            {
-                Err(CaptureError::Capture {
-                    has_captured: false,
-                    error: anyhow::anyhow!("Pktmon capture not supported on this build"),
-                })
-            }
-        }
+        #[cfg(feature = "pcap")]
+        BackendType::Pcap => Ok(Box::new(pcap_backend::PcapBackend::new(capture_source)?)),
+        #[cfg(not(feature = "pcap"))]
+        BackendType::Pcap => Err(CaptureError::Capture {
+            has_captured: false,
+            error: anyhow::anyhow!(
+                "Please enable the pcap feature during build to use the pcap backend",
+            ),
+        }),
+
+        #[allow(unreachable_patterns)]
+        _ => Err(CaptureError::Capture {
+            has_captured: false,
+            error: anyhow::anyhow!(
+                "Capture backend type {:?} not supported on this operating system",
+                backend
+            ),
+        }),
     }
 }

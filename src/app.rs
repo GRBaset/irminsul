@@ -113,6 +113,7 @@ fn start_async_runtime(
     egui_ctx: Context,
     log_packets_rx: watch::Receiver<bool>,
     capture_backend: capture::BackendType,
+    capture_source: capture::CaptureSource,
 ) -> (
     mpsc::UnboundedSender<Message>,
     watch::Receiver<AppState>,
@@ -160,6 +161,7 @@ fn start_async_runtime(
                 ui_message_rx,
                 log_packets_rx,
                 capture_backend,
+                capture_source,
             )
             .await
             {
@@ -181,6 +183,7 @@ impl IrminsulApp {
         cc: &eframe::CreationContext<'_>,
         mut tracing_reload_handle: ReloadHandle,
         capture_backend: capture::BackendType,
+        capture_source: capture::CaptureSource,
     ) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
         egui_material_icons::initialize(&cc.egui_ctx);
@@ -193,8 +196,12 @@ impl IrminsulApp {
 
         tracing_reload_handle.set_filter(saved_state.tracing_level.get_filter());
         let (log_packets_tx, log_packets_rx) = watch::channel(saved_state.log_raw_packets);
-        let (ui_message_tx, state_rx, wish_url_rx) =
-            start_async_runtime(cc.egui_ctx.clone(), log_packets_rx, capture_backend);
+        let (ui_message_tx, state_rx, wish_url_rx) = start_async_runtime(
+            cc.egui_ctx.clone(),
+            log_packets_rx,
+            capture_backend,
+            capture_source,
+        );
 
         if saved_state.auto_start_capture {
             if let Err(e) = ui_message_tx.send(Message::StartCapture) {
