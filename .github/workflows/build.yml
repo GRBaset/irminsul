@@ -1,0 +1,98 @@
+name: Build
+
+on:
+  push:
+    branches: ["personal"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-pcap
+            binary: irminsul.exe
+            features: "pcap"
+            check: false
+          - os: windows-latest
+            name: windows
+            binary: irminsul.exe
+            features: ""
+            check: false
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            binary: irminsul
+            features: "pcap,static-libpcap"
+          - os: macos-latest
+            name: macos-arm64
+            binary: irminsul
+            features: "pcap"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Setup Linux
+        if: runner.os == 'Linux'
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          echo "set man-db/auto-update false" | sudo debconf-communicate
+          sudo dpkg-reconfigure -f noninteractive man-db
+          sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
+          sudo apt-get update && sudo apt-get build-dep -y libpcap0.8
+          cd /tmp
+          [ ! -f libpcap-1.10.5.tar.gz ] && wget https://www.tcpdump.org/release/libpcap-1.10.5.tar.gz
+          echo "37ced90a19a302a7f32e458224a00c365c117905c2cd35ac544b6880a81488f0  libpcap-1.10.5.tar.gz" | sha256sum -c
+          tar xzf libpcap-1.10.5.tar.gz && cd libpcap-1.10.5
+          ./configure --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu --disable-dbus
+          make && sudo make install && sudo ldconfig
+      - name: Setup Windows
+        if: runner.os == 'Windows' && matrix.features == 'pcap'
+        run: |
+          curl https://npcap.com/dist/npcap-sdk-1.15.zip -o sdk.zip
+          unzip sdk.zip
+      - run: rustup component add clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --release --no-default-features --features "${{ matrix.features }}" -- -Dwarnings
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      - run: cargo test --release --no-default-features --features "${{ matrix.features }}"
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      - run: cargo build --release --no-default-features --features "${{ matrix.features }}"
+        env:
+          LIB: ${{ github.workspace }}/Lib/x64/
+      - name: Package
+        shell: bash
+        run: |
+          cd target/release
+          chmod +x ${{ matrix.binary }} 2>/dev/null || true
+          tar -czf irminsul-${{ matrix.name }}.tar.gz ${{ matrix.binary }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: irminsul-${{ matrix.name }}
+          path: target/release/irminsul-${{ matrix.name }}.tar.gz
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          gh release create "v${version}-dev-$(git rev-parse --short HEAD)" artifacts/*/* --prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
