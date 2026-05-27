@@ -180,7 +180,7 @@ dependencies = [
 [[package]]
 name = "anime-game-data"
 version = "0.1.0"
-source = "git+https://github.com/konkers/anime-game-data?rev=9cea9dd545317f897f827a54fa14b16defcec67d#9cea9dd545317f897f827a54fa14b16defcec67d"
+source = "git+https://github.com/konkers/anime-game-data?rev=222bab5d8f3f7c5052360672a9d882e766e70062#222bab5d8f3f7c5052360672a9d882e766e70062"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -1569,9 +1569,9 @@ checksum = "8591b0bcc8a98a64310a2fae1bb3e9b8564dd10e381e6e28010fde8e8e8568db"
 
 [[package]]
 name = "flate2"
-version = "1.1.8"
+version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b375d6465b98090a5f25b1c7703f3859783755aa9a80433b36e0379a3ec2f369"
+checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -2329,6 +2329,7 @@ dependencies = [
  "egui_extras",
  "egui_material_icons",
  "env_logger",
+ "flate2",
  "futures",
  "futures-util",
  "indexmap",
