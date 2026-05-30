@@ -19,7 +19,12 @@ impl PcapBackend {
     }
 
     fn should_capture_on_device(device: &Device) -> bool {
-        device.flags.connection_status == ConnectionStatus::Connected
+        let flags = &device.flags;
+        flags.is_up()
+            && flags.is_running()
+            && !flags.is_loopback()
+            && !device.addresses.is_empty()
+            && flags.connection_status != ConnectionStatus::Disconnected
     }
 
     pub fn new() -> Result<Self> {
