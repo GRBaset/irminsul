@@ -2,6 +2,8 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+#[cfg(windows)]
+use std::process::Command;
 use std::thread;
 use std::time::Instant;
 
