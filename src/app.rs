@@ -323,7 +323,7 @@ impl IrminsulApp {
             None
         };
 
-        let mut tray_icon = None;
+        let tray_icon = None;
 
         if let Ok(icon_data) = image::load_from_memory(include_bytes!("../assets/icon-256.png")) {
             let rgba = icon_data.into_rgba8();
@@ -336,7 +336,21 @@ impl IrminsulApp {
                 let quit_id = quit_i.id().clone();
                 let _ = tray_menu.append_items(&[&restore_i, &quit_i]);
 
-                tray_icon = TrayIconBuilder::new()
+                #[cfg(target_os = "linux")]
+                std::thread::spawn(|| {
+                    gtk::init().unwrap();
+                    let _tray_icon = TrayIconBuilder::new()
+                        .with_tooltip("Irminsul")
+                        .with_icon(icon)
+                        .with_menu(Box::new(Menu::new()))
+                        .build()
+                        .ok();
+
+                    gtk::main();
+                });
+
+                #[cfg(not(target_os = "linux"))]
+                let tray_icon = TrayIconBuilder::new()
                     .with_tooltip("Irminsul")
                     .with_icon(icon)
                     .with_menu(Box::new(Menu::new()))

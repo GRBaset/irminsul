@@ -63,6 +63,7 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tray-icon = "0.24.1"
 image = "0.25.9"
 single-instance = "0.3.3"
+gtk = "0.18.2"
 
 [target.'cfg(windows)'.dependencies]
 pktmon = { version = "0.6.2", features = ["tokio"] }
