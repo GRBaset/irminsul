@@ -70,6 +70,8 @@ pub struct Monitor {
 }
 
 impl Monitor {
+    // WORKAROUND: Clippy. Consider refactoring this.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         state_tx: watch::Sender<AppState>,
         mut ui_message_rx: mpsc::UnboundedReceiver<Message>,
@@ -175,12 +177,8 @@ impl Monitor {
             }
             Message::ClearData => {
                 let mut new_updated = DataUpdated::new();
-                new_updated.achievements_updated_time = self
-                    .app_state
-                    .app_state
-                    .updated
-                    .achievements_updated_time
-                    .clone();
+                new_updated.achievements_updated_time =
+                    self.app_state.app_state.updated.achievements_updated_time;
                 self.app_state.update_timestamps(new_updated);
                 self.ctx.request_repaint();
             }

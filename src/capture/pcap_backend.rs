@@ -53,7 +53,7 @@ impl PcapBackend {
                         "Available device {}/{}: {}, details: {:?}",
                         i + 1,
                         devices.len(),
-                        PcapBackend::get_device_identifier(&device),
+                        PcapBackend::get_device_identifier(device),
                         device
                     );
                 }
@@ -86,12 +86,8 @@ impl PcapBackend {
             CaptureSource::File(savefile_path) => {
                 // 1. Read capture savefile
                 let mut successful_captures = Vec::new();
-                match Self::setup_file_capture(&savefile_path, &filter_expression) {
-                    Ok(capture) => {
-                        successful_captures.push(capture);
-                    }
-                    Err(e) => return Err(e),
-                }
+                let capture = Self::setup_file_capture(&savefile_path, &filter_expression)?;
+                successful_captures.push(capture);
 
                 // 2. Process results
                 Self::handle_results(successful_captures, packet_tx)?;

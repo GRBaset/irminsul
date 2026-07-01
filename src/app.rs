@@ -198,6 +198,8 @@ fn set_launch_on_startup(_enabled: bool) -> Result<()> {
     Err(anyhow!("Start on startup is only supported on Windows"))
 }
 
+// WORKAROUND: Clippy. Consider refactoring this.
+#[allow(clippy::type_complexity)]
 fn start_async_runtime(
     egui_ctx: Context,
     log_packets_rx: watch::Receiver<bool>,
@@ -350,7 +352,7 @@ impl IrminsulApp {
                 });
 
                 #[cfg(not(target_os = "linux"))]
-                let tray_icon = TrayIconBuilder::new()
+                let _tray_icon = TrayIconBuilder::new()
                     .with_tooltip("Irminsul")
                     .with_icon(icon)
                     .with_menu(Box::new(Menu::new()))

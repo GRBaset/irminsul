@@ -141,11 +141,7 @@ impl PlayerData {
                 continue;
             }
 
-            if item.has_material() {
-                self.items.insert(item.guid, item.clone());
-            } else if item.has_equip() {
-                self.items.insert(item.guid, item.clone());
-            } else if item.has_furniture() {
+            if item.has_material() || item.has_equip() || item.has_furniture() {
                 self.items.insert(item.guid, item.clone());
             }
         }
@@ -433,31 +429,8 @@ impl PlayerData {
         materials
     }
 
-    pub fn check_num_weapons(&self, items: &[Item]) -> u32 {
-        items.iter().fold(0, |agg, item| {
-            if !item.has_equip() {
-                return agg;
-            }
-            let equip = item.equip();
-
-            if !equip.has_weapon() {
-                return agg;
-            }
-
-            return agg + 1;
-        })
-    }
-
-    pub fn has_items(&self) -> bool {
-        !self.items.is_empty()
-    }
-
     pub fn has_characters(&self) -> bool {
         !self.characters.is_empty()
-    }
-
-    pub fn has_achievements(&self) -> bool {
-        !self.achievements.is_empty()
     }
 
     pub fn check_num_characters(&self, characters: &[AvatarInfo]) -> u32 {
@@ -465,7 +438,8 @@ impl PlayerData {
             if character.avatar_type != 1 {
                 return agg;
             }
-            return agg + 1;
+
+            agg + 1
         })
     }
 }
