@@ -2,4 +2,4 @@
 /docs/book
 megalinter-reports/
 .DS_Store
-.vscode/settings.json
+.vscode
