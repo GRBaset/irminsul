@@ -4,7 +4,7 @@ use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 #[cfg(windows)]
 use std::process::Command;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
 use anyhow::{Context as _, Result, anyhow};
@@ -17,6 +17,7 @@ use egui_file_dialog::FileDialog;
 use egui_notify::Toasts;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio_util::sync::CancellationToken;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
@@ -104,6 +105,9 @@ pub struct IrminsulApp {
     saved_state_tx: watch::Sender<SavedAppState>,
     tracing_reload_handle: ReloadHandle,
     toast_rx: mpsc::UnboundedReceiver<(String, bool)>,
+
+    monitor_handle: Option<JoinHandle<()>>,
+    monitor_cancel_token: CancellationToken,
 
     toasts: Toasts,
 
@@ -203,6 +207,7 @@ fn set_launch_on_startup(_enabled: bool) -> Result<()> {
 // WORKAROUND: Clippy. Consider refactoring this.
 #[allow(clippy::type_complexity)]
 fn start_async_runtime(
+    cancel_token: CancellationToken,
     egui_ctx: Context,
     log_packets_rx: watch::Receiver<bool>,
     saved_state_rx: watch::Receiver<SavedAppState>,
@@ -213,6 +218,7 @@ fn start_async_runtime(
     watch::Receiver<AppState>,
     watch::Receiver<Option<String>>,
     mpsc::UnboundedReceiver<(String, bool)>,
+    JoinHandle<()>,
 ) {
     tracing::info!("starting tokio async");
     let (ui_message_tx, mut ui_message_rx) = mpsc::unbounded_channel::<Message>();
@@ -222,7 +228,8 @@ fn start_async_runtime(
     let (wish_url_tx, wish_url_rx) = watch::channel(None);
     let mut updater_state_rx = state_rx.clone();
     let updater_ctx = egui_ctx.clone();
-    thread::spawn(move || {
+
+    let monitor_handle = thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         rt.block_on(async {
@@ -254,6 +261,7 @@ fn start_async_runtime(
             });
             tracing::info!("Starting monitor");
             let monitor = match Monitor::new(
+                cancel_token,
                 state_tx,
                 ui_message_rx,
                 log_packets_rx,
@@ -271,11 +279,19 @@ fn start_async_runtime(
                     return;
                 }
             };
+
             monitor.run().await;
         });
     });
+
     tracing::info!("started tokio");
-    (ui_message_tx, state_rx, wish_url_rx, toast_rx)
+    (
+        ui_message_tx,
+        state_rx,
+        wish_url_rx,
+        toast_rx,
+        monitor_handle,
+    )
 }
 
 impl IrminsulApp {
@@ -296,10 +312,12 @@ impl IrminsulApp {
 
         tracing::info!("Tracker API URL: {}", saved_state.tracker_api_url);
 
+        let cancel_token = CancellationToken::new();
         tracing_reload_handle.set_filter(saved_state.tracing_level.get_filter());
         let (log_packets_tx, log_packets_rx) = watch::channel(saved_state.log_raw_packets);
         let (saved_state_tx, saved_state_rx) = watch::channel(saved_state.clone());
-        let (ui_message_tx, state_rx, wish_url_rx, toast_rx) = start_async_runtime(
+        let (ui_message_tx, state_rx, wish_url_rx, toast_rx, monitor_handle) = start_async_runtime(
+            cancel_token.clone(),
             cc.egui_ctx.clone(),
             log_packets_rx,
             saved_state_rx,
@@ -429,6 +447,17 @@ impl IrminsulApp {
             minimize_modal_open: false,
             minimize_modal_remember: true,
             app_settings_open: false,
+            monitor_cancel_token: cancel_token,
+            monitor_handle: Some(monitor_handle),
+        }
+    }
+}
+
+impl Drop for IrminsulApp {
+    fn drop(&mut self) {
+        self.monitor_cancel_token.cancel();
+        if let Some(handle) = self.monitor_handle.take() {
+            let _ = handle.join();
         }
     }
 }

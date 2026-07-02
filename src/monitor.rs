@@ -13,6 +13,7 @@ use base64::prelude::*;
 use chrono::prelude::*;
 use flate2::read::GzDecoder;
 use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::capture::{self, BackendType, CaptureSource, create_capture};
@@ -54,7 +55,9 @@ pub struct Monitor {
     log_packet_rx: watch::Receiver<bool>,
     player_data: PlayerData,
     sniffer: GameSniffer,
+    cancel_token: CancellationToken,
     capture_cancel_token: Option<CancellationToken>,
+    capture_handle: Option<JoinHandle<Result<()>>>,
     packet_tx: mpsc::UnboundedSender<Result<Vec<u8>>>,
     packet_rx: mpsc::UnboundedReceiver<Result<Vec<u8>>>,
     capture_backend: BackendType,
@@ -73,6 +76,7 @@ impl Monitor {
     // WORKAROUND: Clippy. Consider refactoring this.
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
+        cancel_token: CancellationToken,
         state_tx: watch::Sender<AppState>,
         mut ui_message_rx: mpsc::UnboundedReceiver<Message>,
         log_packet_rx: watch::Receiver<bool>,
@@ -95,7 +99,9 @@ impl Monitor {
             ui_message_rx,
             log_packet_rx,
             sniffer,
+            cancel_token,
             capture_cancel_token: None,
+            capture_handle: None,
             packet_tx,
             packet_rx,
             capture_backend,
@@ -127,6 +133,10 @@ impl Monitor {
 
             #[rustfmt::skip]
                 tokio::select! {
+                    _ = self.cancel_token.cancelled() => {
+                        self.shutdown().await;
+                        break;
+                    },
                     _ = sleep_fut => {
                         self.execute_automation_export().await;
                     }
@@ -157,13 +167,14 @@ impl Monitor {
 
                 // Spawn capture task.
                 let cancel_token = CancellationToken::new();
-                tokio::spawn(capture_task(
+                let capture_handle = tokio::spawn(capture_task(
                     cancel_token.clone(),
                     self.packet_tx.clone(),
                     self.capture_backend,
                     self.capture_source.clone(),
                 ));
                 self.capture_cancel_token = Some(cancel_token);
+                self.capture_handle = Some(capture_handle);
                 self.automation_cycle_started_at = Some(Instant::now());
                 self.app_state.update_capturing_state(true);
             }
@@ -577,6 +588,21 @@ impl Monitor {
                 }
             }
         });
+    }
+
+    async fn shutdown(&mut self) {
+        if let Some(cancel_token) = self.capture_cancel_token.take() {
+            cancel_token.cancel();
+            self.app_state.update_capturing_state(false);
+
+            if let Some(handle) = self.capture_handle.take() {
+                let _ = handle.await;
+            } else {
+                tracing::warn!("Capture stop request with no current handle");
+            };
+        } else {
+            tracing::warn!("Capture stop request with no current cancel token");
+        };
     }
 }
 
