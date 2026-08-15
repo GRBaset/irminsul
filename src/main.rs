@@ -173,12 +173,6 @@ impl ReloadHandle {
 }
 
 fn main() -> eframe::Result {
-    let instance = single_instance::SingleInstance::new("irminsul_app_instance").unwrap();
-    if !instance.is_single() {
-        eprintln!("Another instance of Irminsul is already running.");
-        std::process::exit(1);
-    }
-
     let (_guard, reload_handle) = tracing_init().unwrap();
 
     let args = Args::parse();
@@ -197,6 +191,12 @@ fn main() -> eframe::Result {
     let capture_backend = args.capture_backend;
 
     let background_image_size = [1600., 1000.];
+
+    let instance = single_instance::SingleInstance::new("irminsul_app_instance").unwrap();
+    if !instance.is_single() && !args.read_from_file {
+        eprintln!("Another instance of Irminsul is already running.");
+        std::process::exit(1);
+    }
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
