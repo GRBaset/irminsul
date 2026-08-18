@@ -64,6 +64,10 @@ pub struct Good {
     pub artifacts: Vec<Artifact>,
     pub weapons: Vec<Weapon>,
     pub materials: HashMap<String, u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gi_achievements: Option<Vec<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
 }
 
 /// GOOD key for the Traveler before their element is appended.
