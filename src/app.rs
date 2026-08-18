@@ -319,9 +319,15 @@ impl IrminsulApp {
             capture_backend,
         );
 
-        if let Err(e) = ui_message_tx.send(Message::StartCapture) {
-            tracing::error!("Failed to send auto start message: {e}");
-        }
+        let ui_message_tx_start = ui_message_tx.clone();
+        let state_rx_start = state_rx.clone();
+        thread::spawn(move || {
+            // Loop while waiting for the app to initialize.
+            while !matches!(state_rx_start.borrow().state, State::Main) {}
+            if let Err(e) = ui_message_tx_start.send(Message::StartCapture) {
+                tracing::error!("Failed to send auto start message: {e}");
+            }
+        });
 
         let toasts = Toasts::default().with_anchor(egui_notify::Anchor::BottomLeft);
 
