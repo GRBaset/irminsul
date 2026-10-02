@@ -1,6 +1,6 @@
 [package]
 
-version = "0.2.1-T-1"
+version = "0.2.2-T-1"
 name = "irminsul"
 authors = ["Konkers <konkers@konkers.net>"]
 edition = "2024"
